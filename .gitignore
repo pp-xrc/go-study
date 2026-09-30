@@ -1,0 +1,7 @@
+29-todo/bin/
+29-todo/logs/
+29-todo/tmp/
+
+# 根目录编译产物
+/main
+

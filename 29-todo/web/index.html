@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ToDo 登录</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Day29 ToDo</h1>
+      <p class="sub">登录后管理自己的待办。演示账号 13800000000 / admin123</p>
+
+      <div class="tabs">
+        <button class="btn ghost active" id="tab-login" type="button">登录</button>
+        <button class="btn ghost" id="tab-reg" type="button">注册</button>
+      </div>
+
+      <form id="form-login">
+        <label>手机号</label>
+        <input name="phone" value="13800000000" required />
+        <label>密码</label>
+        <input name="password" type="password" value="admin123" required />
+        <div style="margin-top:16px">
+          <button class="btn" type="submit">登录</button>
+        </div>
+      </form>
+
+      <form id="form-reg" hidden>
+        <label>手机号</label>
+        <input name="phone" required />
+        <label>密码（至少 6 位）</label>
+        <input name="password" type="password" required minlength="6" />
+        <label>昵称（可选）</label>
+        <input name="nickname" />
+        <div style="margin-top:16px">
+          <button class="btn" type="submit">注册并登录</button>
+        </div>
+      </form>
+
+      <p class="msg" id="msg"></p>
+    </div>
+  </div>
+
+  <script src="/assets/api.js"></script>
+  <script>
+    if (getToken()) location.href = "/app.html";
+
+    const msg = document.getElementById("msg");
+    const formLogin = document.getElementById("form-login");
+    const formReg = document.getElementById("form-reg");
+
+    document.getElementById("tab-login").onclick = function () {
+      this.classList.add("active");
+      document.getElementById("tab-reg").classList.remove("active");
+      formLogin.hidden = false;
+      formReg.hidden = true;
+      msg.textContent = "";
+    };
+    document.getElementById("tab-reg").onclick = function () {
+      this.classList.add("active");
+      document.getElementById("tab-login").classList.remove("active");
+      formLogin.hidden = true;
+      formReg.hidden = false;
+      msg.textContent = "";
+    };
+
+    formLogin.onsubmit = async function (e) {
+      e.preventDefault();
+      msg.textContent = "";
+      const fd = new FormData(formLogin);
+      try {
+        const data = await api("/user/login", {
+          method: "POST",
+          body: { phone: fd.get("phone"), password: fd.get("password") },
+        });
+        setToken(data.token);
+        location.href = "/app.html";
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    };
+
+    formReg.onsubmit = async function (e) {
+      e.preventDefault();
+      msg.textContent = "";
+      const fd = new FormData(formReg);
+      const phone = fd.get("phone");
+      const password = fd.get("password");
+      try {
+        await api("/user/register", {
+          method: "POST",
+          body: { phone: phone, password: password, nickname: fd.get("nickname") },
+        });
+        const data = await api("/user/login", {
+          method: "POST",
+          body: { phone: phone, password: password },
+        });
+        setToken(data.token);
+        location.href = "/app.html";
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    };
+  </script>
+</body>
+</html>

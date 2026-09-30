@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>我的待办</title>
+  <link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>我的待办</h1>
+        <p class="sub" id="who">加载中…</p>
+      </div>
+      <button class="btn ghost" type="button" id="btn-logout">退出</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <form id="form-create">
+        <label>标题</label>
+        <input name="title" placeholder="例如：学 Go" required />
+        <label>内容</label>
+        <textarea name="content" placeholder="可选"></textarea>
+        <div style="margin-top:12px">
+          <button class="btn" type="submit">新建</button>
+        </div>
+      </form>
+      <p class="msg" id="msg"></p>
+    </div>
+
+    <div class="row" style="margin-bottom:12px">
+      <select id="filter">
+        <option value="all">全部</option>
+        <option value="0">未完成</option>
+        <option value="1">已完成</option>
+      </select>
+    </div>
+
+    <div id="list"></div>
+    <div class="pager">
+      <button class="btn ghost" type="button" id="prev">上一页</button>
+      <span id="pageinfo">-</span>
+      <button class="btn ghost" type="button" id="next">下一页</button>
+    </div>
+  </div>
+
+  <script src="/assets/api.js"></script>
+  <script>
+    if (!getToken()) location.href = "/";
+
+    let page = 1;
+    const size = 5;
+    let total = 0;
+    let cache = [];
+
+    const listEl = document.getElementById("list");
+    const msg = document.getElementById("msg");
+    const filterEl = document.getElementById("filter");
+
+    document.getElementById("btn-logout").onclick = function () {
+      clearToken();
+      location.href = "/";
+    };
+
+    async function loadMe() {
+      const data = await api("/user/me");
+      document.getElementById("who").textContent =
+        (data.user.nickname || data.user.phone) + "  ·  " + data.user.phone;
+    }
+
+    async function loadList() {
+      const data = await api("/todo/list?page=" + page + "&size=" + size);
+      cache = data.list || [];
+      total = data.total || 0;
+      render();
+    }
+
+    function fmtTime(s) {
+      if (!s) return "";
+      return String(s).replace("T", " ").slice(0, 19);
+    }
+
+    function render() {
+      const f = filterEl.value;
+      const items = cache.filter(function (t) {
+        if (f === "all") return true;
+        return String(t.status) === f;
+      });
+
+      if (!items.length) {
+        listEl.innerHTML = '<div class="empty">暂无待办</div>';
+      } else {
+        listEl.innerHTML = items.map(function (t) {
+          const done = t.status === 1;
+          return (
+            '<div class="item' + (done ? " done" : "") + '">' +
+              "<h3>" + escapeHtml(t.title) + "</h3>" +
+              "<p>" + escapeHtml(t.content || "") + "</p>" +
+              '<div class="meta">' +
+                '<span class="badge' + (done ? " done" : "") + '">' + (done ? "已完成" : "未完成") + "</span> " +
+                fmtTime(t.create_time) +
+              "</div>" +
+              '<div class="row">' +
+                '<button class="btn ok" data-act="toggle" data-id="' + t.id + '" data-status="' + t.status + '">' +
+                  (done ? "标为未完成" : "标为完成") +
+                "</button>" +
+                '<button class="btn ghost" data-act="edit" data-id="' + t.id + '">编辑</button>' +
+                '<button class="btn danger" data-act="del" data-id="' + t.id + '">删除</button>' +
+              "</div>" +
+            "</div>"
+          );
+        }).join("");
+      }
+
+      const pages = Math.max(1, Math.ceil(total / size));
+      document.getElementById("pageinfo").textContent = page + " / " + pages + "（共 " + total + " 条）";
+      document.getElementById("prev").disabled = page <= 1;
+      document.getElementById("next").disabled = page >= pages;
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    listEl.onclick = async function (e) {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const id = btn.getAttribute("data-id");
+      const act = btn.getAttribute("data-act");
+      try {
+        if (act === "toggle") {
+          const cur = Number(btn.getAttribute("data-status"));
+          await api("/todo/" + id, { method: "PUT", body: { status: cur === 1 ? 0 : 1 } });
+          await loadList();
+        }
+        if (act === "del") {
+          if (!confirm("确定删除？")) return;
+          await api("/todo/" + id, { method: "DELETE" });
+          await loadList();
+        }
+        if (act === "edit") {
+          const t = cache.find(function (x) { return String(x.id) === String(id); });
+          if (!t) return;
+          const title = prompt("标题", t.title);
+          if (title === null) return;
+          const content = prompt("内容", t.content || "");
+          if (content === null) return;
+          await api("/todo/" + id, { method: "PUT", body: { title: title, content: content } });
+          await loadList();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+
+    document.getElementById("form-create").onsubmit = async function (e) {
+      e.preventDefault();
+      msg.textContent = "";
+      const fd = new FormData(e.target);
+      try {
+        await api("/todo", {
+          method: "POST",
+          body: { title: fd.get("title"), content: fd.get("content") },
+        });
+        e.target.reset();
+        page = 1;
+        await loadList();
+      } catch (err) {
+        msg.textContent = err.message;
+      }
+    };
+
+    filterEl.onchange = render;
+    document.getElementById("prev").onclick = async function () {
+      if (page > 1) { page--; await loadList(); }
+    };
+    document.getElementById("next").onclick = async function () {
+      page++;
+      await loadList();
+    };
+
+    (async function () {
+      try {
+        await loadMe();
+        await loadList();
+      } catch (err) {
+        if (!getToken()) return;
+        alert(err.message);
+      }
+    })();
+  </script>
+</body>
+</html>
